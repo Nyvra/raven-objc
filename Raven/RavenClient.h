@@ -37,4 +37,10 @@ typedef enum {
 - (void)captureException:(NSException *)exception sendNow:(BOOL)sendNow;
 - (void)setupExceptionHandler;
 
+@property (nonatomic, strong) NSMutableDictionary *extras;
+
+@property (nonatomic, strong) NSString *userId;
+@property (nonatomic, strong) NSString *userName;
+@property (nonatomic, strong) NSString *userMail;
+
 @end

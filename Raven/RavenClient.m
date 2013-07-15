@@ -68,6 +68,8 @@ void exceptionHandler(NSException *exception) {
             NSLog(@"Invalid DSN %@!", DSN);
             return nil;
         }
+        
+        self.extras = [NSMutableDictionary dictionary];
 
         // Save singleton
         if (sharedClient == nil) {
@@ -137,18 +139,64 @@ void exceptionHandler(NSException *exception) {
                                  kRavenLogLevelArray[kRavenLogLevelDebugFatal], @"level",
                                  @"objc", @"platform",
                                  nil];
+    
+    // Modules.
+    NSString *appId = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleIdentifier"];
+    NSString *appVersion = [NSString stringWithFormat:@"%@ (%@)",
+                            [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
+                            [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"]
+                            ];
+    data[@"modules"] = @{ appId : appVersion };
 
-    NSDictionary *exceptionDict = [NSDictionary dictionaryWithObjectsAndKeys:
-                                   exception.name, @"type",
-                                   exception.reason, @"value",
-                                   nil];
+    // Extra.
+    NSMutableDictionary *extra = [NSMutableDictionary dictionary];
+    extra[@"device_name"] = [[UIDevice currentDevice] name];
+    extra[@"device_model"] = [[UIDevice currentDevice] model];
+    extra[@"system_name"] = [[UIDevice currentDevice] systemName];
+    extra[@"system_version"] = [[UIDevice currentDevice] systemVersion];
+    extra[@"vendor_identifier"] = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
+    
+    if (self.extras.count > 0) {
+        [extra addEntriesFromDictionary:self.extras];
+    }
+    data[@"extra"] = extra;
+    
+    // User.
+    if (self.userId != nil) {
+        NSMutableDictionary *userDict = [NSMutableDictionary dictionary];
+        userDict[@"id"] = self.userId;
+        userDict[@"is_authenticated"] = @( YES );
+        if (self.userName != nil) {
+            userDict[@"username"] = self.userName;
+        }
+        if (self.userMail != nil) {
+            userDict[@"email"] = self.userMail;
+        }
+        data[@"sentry.interfaces.User"] = userDict;
+    }
+    
+    // Exception.
+    NSDictionary *exceptionDict = @{ @"type": exception.name,
+                                     @"value": exception.reason,
+                                     @"module": [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleIdentifier"]
+                                     };
+    
+    data[@"sentry.interfaces.Exception"] = exceptionDict;
 
-    NSDictionary *extraDict = [NSDictionary dictionaryWithObjectsAndKeys:
-                                   [exception callStackSymbols], @"CallStack",
-                                   nil];
+    
+    // Stacktrace.
+    NSMutableArray *frames = [NSMutableArray array];
+    for (NSString *symbol in [exception callStackSymbols]) {
+        NSMutableDictionary *frame = [NSMutableDictionary dictionary];
+        frame[@"function"] = symbol;
+        [frames addObject:frame];
+    }
 
-    [data setObject:exceptionDict forKey:@"sentry.interfaces.Exception"];
-    [data setObject:extraDict forKey:@"extra"];
+    NSMutableDictionary *stacktraceDict = [NSMutableDictionary dictionary];
+    stacktraceDict[@"frames"] = frames;
+
+    data[@"sentry.interfaces.Stacktrace"] = stacktraceDict;
+    
 
     if (!sendNow) {
         // We can't send this exception to Sentry now, e.g. because the app is killed before the
